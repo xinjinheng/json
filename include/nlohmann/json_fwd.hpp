@@ -70,6 +70,25 @@ struct ordered_map;
 /// @sa https://json.nlohmann.me/api/ordered_json/
 using ordered_json = basic_json<nlohmann::ordered_map>;
 
+// JSON Schema validation
+template<typename BasicJsonType>
+class json_schema_validator;
+
+// JSON incremental synchronization
+struct json_patch_extended;
+enum class conflict_strategy_t;
+class version_vector;
+template<typename BasicJsonType>
+class json_sync;
+
+// JSON compression
+enum class compression_level_t;
+struct compression_options;
+template<typename BasicJsonType>
+class json_compressor;
+template<typename BasicJsonType>
+class json_decompressor;
+
 NLOHMANN_JSON_NAMESPACE_END
 
 #endif  // INCLUDE_NLOHMANN_JSON_FWD_HPP_

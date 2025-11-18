@@ -62,6 +62,15 @@
 #include <nlohmann/json_fwd.hpp>
 #include <nlohmann/ordered_map.hpp>
 
+// JSON Schema validation
+#include <nlohmann/detail/schema/schema.hpp>
+
+// JSON incremental synchronization
+#include <nlohmann/detail/sync/sync.hpp>
+
+// JSON compression
+#include <nlohmann/detail/compression/compression.hpp>
+
 #if defined(JSON_HAS_CPP_17)
     #if JSON_HAS_STATIC_RTTI
         #include <any>
