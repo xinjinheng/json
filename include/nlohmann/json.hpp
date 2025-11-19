@@ -388,9 +388,13 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
         {
             AllocatorTraits::deallocate(alloc, obj, 1);
         };
-        std::unique_ptr<T, decltype(deleter)> obj(AllocatorTraits::allocate(alloc, 1), deleter);
+        T* ptr = AllocatorTraits::allocate(alloc, 1);
+        if (JSON_HEDLEY_UNLIKELY(ptr == nullptr))
+        {
+            JSON_THROW(detail::out_of_memory::create(600, "memory allocation failed", nullptr));
+        }
+        std::unique_ptr<T, decltype(deleter)> obj(ptr, deleter);
         AllocatorTraits::construct(alloc, obj.get(), std::forward<Args>(args)...);
-        JSON_ASSERT(obj != nullptr);
         return obj.release();
     }
 
@@ -2184,12 +2188,20 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
     template<typename T>
     reference operator[](T* key)
     {
+        if (key == nullptr)
+        {
+            JSON_THROW(detail::invalid_pointer::create(101, "null pointer passed to operator[]", this));
+        }
         return operator[](typename object_t::key_type(key));
     }
 
     template<typename T>
     const_reference operator[](T* key) const
     {
+        if (key == nullptr)
+        {
+            JSON_THROW(detail::invalid_pointer::create(101, "null pointer passed to operator[]", this));
+        }
         return operator[](typename object_t::key_type(key));
     }
 
@@ -4047,10 +4059,11 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
                             parser_callback_t cb = nullptr,
                             const bool allow_exceptions = true,
                             const bool ignore_comments = false,
-                            const bool ignore_trailing_commas = false)
+                            const bool ignore_trailing_commas = false,
+                            const std::chrono::duration<double> timeout = std::chrono::duration<double>::max())
     {
         basic_json result;
-        parser(detail::input_adapter(std::forward<InputType>(i)), std::move(cb), allow_exceptions, ignore_comments, ignore_trailing_commas).parse(true, result); // cppcheck-suppress[accessMoved,accessForwarded]
+        parser(detail::input_adapter(std::forward<InputType>(i)), std::move(cb), allow_exceptions, ignore_comments, ignore_trailing_commas, timeout).parse(true, result); // cppcheck-suppress[accessMoved,accessForwarded]
         return result;
     }
 
@@ -4063,10 +4076,11 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
                             parser_callback_t cb = nullptr,
                             const bool allow_exceptions = true,
                             const bool ignore_comments = false,
-                            const bool ignore_trailing_commas = false)
+                            const bool ignore_trailing_commas = false,
+                            const std::chrono::duration<double> timeout = std::chrono::duration<double>::max())
     {
         basic_json result;
-        parser(detail::input_adapter(std::move(first), std::move(last)), std::move(cb), allow_exceptions, ignore_comments, ignore_trailing_commas).parse(true, result); // cppcheck-suppress[accessMoved]
+        parser(detail::input_adapter(std::move(first), std::move(last)), std::move(cb), allow_exceptions, ignore_comments, ignore_trailing_commas, timeout).parse(true, result); // cppcheck-suppress[accessMoved]
         return result;
     }
 
@@ -4076,10 +4090,11 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
                             parser_callback_t cb = nullptr,
                             const bool allow_exceptions = true,
                             const bool ignore_comments = false,
-                            const bool ignore_trailing_commas = false)
+                            const bool ignore_trailing_commas = false,
+                            const std::chrono::duration<double> timeout = std::chrono::duration<double>::max())
     {
         basic_json result;
-        parser(i.get(), std::move(cb), allow_exceptions, ignore_comments, ignore_trailing_commas).parse(true, result); // cppcheck-suppress[accessMoved]
+        parser(i.get(), std::move(cb), allow_exceptions, ignore_comments, ignore_trailing_commas, timeout).parse(true, result); // cppcheck-suppress[accessMoved]
         return result;
     }
 
