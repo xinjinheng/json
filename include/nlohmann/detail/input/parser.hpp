@@ -10,6 +10,7 @@
 
 #include <cmath> // isfinite
 #include <cstdint> // uint8_t
+#include <chrono> // chrono
 #include <functional> // function
 #include <string> // string
 #include <utility> // move
@@ -66,17 +67,35 @@ class parser
     using lexer_t = lexer<BasicJsonType, InputAdapterType>;
     using token_type = typename lexer_t::token_type;
 
+  private:
+    /// timeout duration
+    const std::chrono::duration<double> timeout;
+    /// start time of parsing
+    const std::chrono::steady_clock::time_point start_time;
+    
+    /// check if parsing has timed out
+    void check_timeout() const
+    {
+        if (timeout < std::chrono::steady_clock::now() - start_time)
+        {
+            JSON_THROW(parse_timeout::create(104, m_lexer.get_position(), "parse timed out", nullptr));
+        }
+    }
+
   public:
     /// a parser reading from an input adapter
     explicit parser(InputAdapterType&& adapter,
                     parser_callback_t<BasicJsonType> cb = nullptr,
                     const bool allow_exceptions_ = true,
                     const bool ignore_comments = false,
-                    const bool ignore_trailing_commas_ = false)
+                    const bool ignore_trailing_commas_ = false,
+                    const std::chrono::duration<double> timeout_ = std::chrono::duration<double>::max())
         : callback(std::move(cb))
         , m_lexer(std::move(adapter), ignore_comments)
         , allow_exceptions(allow_exceptions_)
         , ignore_trailing_commas(ignore_trailing_commas_)
+        , timeout(timeout_)
+        , start_time(std::chrono::steady_clock::now())
     {
         // read first token
         get_token();
@@ -487,6 +506,7 @@ class parser
     /// get next token from lexer
     token_type get_token()
     {
+        check_timeout();
         return last_token = m_lexer.scan();
     }
 

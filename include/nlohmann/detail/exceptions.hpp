@@ -283,6 +283,103 @@ class other_error : public exception
     other_error(int id_, const char* what_arg) : exception(id_, what_arg) {}
 };
 
+/// @brief exception indicating an invalid pointer dereference
+/// @sa https://json.nlohmann.me/api/basic_json/invalid_pointer/
+class invalid_pointer : public exception
+{
+  public:
+    template<typename BasicJsonContext, enable_if_t<is_basic_json_context<BasicJsonContext>::value, int> = 0>
+    static invalid_pointer create(int id_, const std::string& what_arg, BasicJsonContext context)
+    {
+        const std::string w = concat(exception::name("invalid_pointer", id_), exception::diagnostics(context), what_arg);
+        return {id_, w.c_str()};
+    }
+
+  private:
+    JSON_HEDLEY_NON_NULL(3)
+    invalid_pointer(int id_, const char* what_arg) : exception(id_, what_arg) {}
+};
+
+/// @brief exception indicating a dangling pointer access
+/// @sa https://json.nlohmann.me/api/basic_json/dangling_pointer/
+class dangling_pointer : public exception
+{
+  public:
+    template<typename BasicJsonContext, enable_if_t<is_basic_json_context<BasicJsonContext>::value, int> = 0>
+    static dangling_pointer create(int id_, const std::string& what_arg, BasicJsonContext context)
+    {
+        const std::string w = concat(exception::name("dangling_pointer", id_), exception::diagnostics(context), what_arg);
+        return {id_, w.c_str()};
+    }
+
+  private:
+    JSON_HEDLEY_NON_NULL(3)
+    dangling_pointer(int id_, const char* what_arg) : exception(id_, what_arg) {}
+};
+
+/// @brief exception indicating a parse timeout
+/// @sa https://json.nlohmann.me/api/basic_json/parse_timeout/
+class parse_timeout : public parse_error
+{
+  public:
+    /*! @brief create a parse timeout exception
+     *  @param[in] id_       the id of the exception
+     *  @param[in] pos       the position where the error occurred
+     *  @param[in] what_arg  the explanatory string
+     *  @return parse_timeout object
+     */
+    template<typename BasicJsonContext, enable_if_t<is_basic_json_context<BasicJsonContext>::value, int> = 0>
+    static parse_timeout create(int id_, const position_t& pos, const std::string& what_arg, BasicJsonContext context)
+    {
+        const std::string w = concat(exception::name("parse_timeout", id_), "parse timeout",
+                                     position_string(pos), ": ", exception::diagnostics(context), what_arg);
+        return {id_, pos.chars_read_total, w.c_str()};
+    }
+
+    /*! @brief create a parse timeout exception
+     *  @param[in] id_       the id of the exception
+     *  @param[in] byte_     the byte where the error occurred
+     *  @param[in] what_arg  the explanatory string
+     *  @return parse_timeout object
+     */
+    template<typename BasicJsonContext, enable_if_t<is_basic_json_context<BasicJsonContext>::value, int> = 0>
+    static parse_timeout create(int id_, std::size_t byte_, const std::string& what_arg, BasicJsonContext context)
+    {
+        const std::string w = concat(exception::name("parse_timeout", id_), "parse timeout",
+                                     (byte_ != 0 ? (concat(" at byte ", std::to_string(byte_))) : ""),
+                                     ": ", exception::diagnostics(context), what_arg);
+        return {id_, byte_, w.c_str()};
+    }
+
+  private:
+    /*! @brief constructor
+     *  @param[in] id_       the id of the exception
+     *  @param[in] byte_     the byte index of the parse error
+     *  @param[in] what_arg  the explanatory string
+     */
+    parse_timeout(int id_, std::size_t byte_, const char* what_arg) noexcept
+        : parse_error(id_, byte_, what_arg) {}
+
+    using parse_error::position_string;
+};
+
+/// @brief exception indicating an out-of-memory condition
+/// @sa https://json.nlohmann.me/api/basic_json/out_of_memory/
+class out_of_memory : public exception
+{
+  public:
+    template<typename BasicJsonContext, enable_if_t<is_basic_json_context<BasicJsonContext>::value, int> = 0>
+    static out_of_memory create(int id_, const std::string& what_arg, BasicJsonContext context)
+    {
+        const std::string w = concat(exception::name("out_of_memory", id_), exception::diagnostics(context), what_arg);
+        return {id_, w.c_str()};
+    }
+
+  private:
+    JSON_HEDLEY_NON_NULL(3)
+    out_of_memory(int id_, const char* what_arg) : exception(id_, what_arg) {}
+};
+
 }  // namespace detail
 NLOHMANN_JSON_NAMESPACE_END
 
