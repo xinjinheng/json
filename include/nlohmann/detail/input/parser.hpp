@@ -23,6 +23,8 @@
 #include <nlohmann/detail/meta/is_sax.hpp>
 #include <nlohmann/detail/string_concat.hpp>
 #include <nlohmann/detail/value_t.hpp>
+#include <nlohmann/detail/memory_monitor.hpp>
+#include <nlohmann/detail/serialization/parse_state.hpp>
 
 NLOHMANN_JSON_NAMESPACE_BEGIN
 namespace detail
@@ -80,6 +82,45 @@ class parser
     {
         // read first token
         get_token();
+    }
+
+    /// a parser reading from a saved parse state
+    explicit parser(const parse_state<BasicJsonType>& state,
+                    InputAdapterType&& adapter,
+                    parser_callback_t<BasicJsonType> cb = nullptr,
+                    const bool allow_exceptions_ = true,
+                    const bool ignore_comments = false,
+                    const bool ignore_trailing_commas_ = false)
+        : callback(std::move(cb))
+        , m_lexer(std::move(adapter), ignore_comments)
+        , allow_exceptions(allow_exceptions_)
+        , ignore_trailing_commas(ignore_trailing_commas_)
+        , memory_limit(state.memory_limit)
+        , relative_memory_limit(state.relative_memory_limit)
+    {
+        // restore lexer state
+        m_lexer.restore_state(state.lexer_state);
+        
+        // restore parser state
+        last_token = state.last_token;
+    }
+
+    /// save current parse state
+    parse_state<BasicJsonType> save_state() const
+    {
+        parse_state<BasicJsonType> state;
+        
+        // save lexer state
+        state.lexer_state = m_lexer.save_state();
+        
+        // save parser state
+        state.last_token = last_token;
+        
+        // save memory threshold settings
+        state.memory_limit = memory_limit;
+        state.relative_memory_limit = relative_memory_limit;
+        
+        return state;
     }
 
     /*!
@@ -200,6 +241,7 @@ class parser
                         {
                             return false;
                         }
+                        check_memory_limit();
 
                         // closing } -> we are done
                         if (get_token() == token_type::end_object)
@@ -245,6 +287,7 @@ class parser
                         {
                             return false;
                         }
+                        check_memory_limit();
 
                         // closing ] -> we are done
                         if (get_token() == token_type::end_array)
@@ -279,6 +322,7 @@ class parser
                             return false;
                         }
 
+                        check_memory_limit();
                         break;
                     }
 
@@ -288,6 +332,7 @@ class parser
                         {
                             return false;
                         }
+                        check_memory_limit();
                         break;
                     }
 
@@ -297,6 +342,7 @@ class parser
                         {
                             return false;
                         }
+                        check_memory_limit();
                         break;
                     }
 
@@ -306,6 +352,7 @@ class parser
                         {
                             return false;
                         }
+                        check_memory_limit();
                         break;
                     }
 
@@ -315,6 +362,7 @@ class parser
                         {
                             return false;
                         }
+                        check_memory_limit();
                         break;
                     }
 
@@ -324,6 +372,7 @@ class parser
                         {
                             return false;
                         }
+                        check_memory_limit();
                         break;
                     }
 
@@ -333,6 +382,7 @@ class parser
                         {
                             return false;
                         }
+                        check_memory_limit();
                         break;
                     }
 
@@ -530,6 +580,36 @@ class parser
     const bool allow_exceptions = true;
     /// whether trailing commas in objects and arrays should be ignored (true) or signaled as errors (false)
     const bool ignore_trailing_commas = false;
+    /// memory limit in bytes (0 means no limit)
+    const std::size_t memory_limit = 0;
+    /// relative memory limit (0.0 means no limit, 1.0 means 100% of system memory)
+    const double relative_memory_limit = 0.0;
+
+    /// check if memory usage exceeds the limit
+    void check_memory_limit() const
+    {
+        if (memory_limit > 0 || relative_memory_limit > 0.0)
+        {
+            const auto current_memory = memory_monitor::get_current_memory_usage();
+            const auto total_memory = memory_monitor::get_total_system_memory();
+
+            if (relative_memory_limit > 0.0)
+            {
+                const auto limit = static_cast<std::size_t>(total_memory * relative_memory_limit);
+                if (current_memory > limit)
+                {
+                    throw memory_limit_exception(current_memory, limit, true, relative_memory_limit);
+                }
+            }
+            else if (memory_limit > 0)
+            {
+                if (current_memory > memory_limit)
+                {
+                    throw memory_limit_exception(current_memory, memory_limit, false, 0.0);
+                }
+            }
+        }
+    }
 };
 
 }  // namespace detail

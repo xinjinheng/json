@@ -195,6 +195,7 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
     using type_error = detail::type_error;
     using out_of_range = detail::out_of_range;
     using other_error = detail::other_error;
+    using memory_limit_exception = detail::memory_limit_exception;
 
     /// @}
 
@@ -4330,6 +4331,65 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
     }
 #endif
 
+    /// @brief memory usage threshold in bytes (0 means no limit)
+    static std::size_t m_memory_limit_bytes;
+
+    /// @brief memory usage threshold as percentage of total system memory (0 means no limit)
+    static double m_memory_limit_percentage;
+
+    /// @brief whether to use relative memory limit (percentage) or absolute limit (bytes)
+    static bool m_use_relative_memory_limit;
+
+  public:
+    /// @name memory threshold settings
+    /// @{
+
+    /// @brief set absolute memory usage threshold in bytes
+    /// @param limit_bytes the memory limit in bytes (0 means no limit)
+    static void set_memory_limit(std::size_t limit_bytes)
+    {
+        m_memory_limit_bytes = limit_bytes;
+        m_use_relative_memory_limit = false;
+    }
+
+    /// @brief set relative memory usage threshold as percentage of total system memory
+    /// @param limit_percentage the memory limit as percentage (0 means no limit, 100 means 100%)
+    static void set_memory_limit(double limit_percentage)
+    {
+        m_memory_limit_percentage = limit_percentage;
+        m_use_relative_memory_limit = true;
+    }
+
+    /// @brief get current memory limit in bytes
+    /// @return the current memory limit in bytes
+    static std::size_t get_memory_limit_bytes() noexcept
+    {
+        return m_memory_limit_bytes;
+    }
+
+    /// @brief get current memory limit as percentage of total system memory
+    /// @return the current memory limit as percentage
+    static double get_memory_limit_percentage() noexcept
+    {
+        return m_memory_limit_percentage;
+    }
+
+    /// @brief check if relative memory limit is being used
+    /// @return true if relative memory limit is being used, false otherwise
+    static bool is_relative_memory_limit_used() noexcept
+    {
+        return m_use_relative_memory_limit;
+    }
+
+    /// @brief reset memory limit to default (no limit)
+    static void reset_memory_limit() noexcept
+    {
+        m_memory_limit_bytes = 0;
+        m_memory_limit_percentage = 0.0;
+        m_use_relative_memory_limit = false;
+    }
+    /// @}
+
     //////////////////////////////////////////
     // binary serialization/deserialization //
     //////////////////////////////////////////
@@ -5319,6 +5379,16 @@ NLOHMANN_JSON_NAMESPACE_END
 ///////////////////////
 // nonmember support //
 ///////////////////////
+
+// Define static member variables for memory limit
+NLOHMANN_BASIC_JSON_TPL_DECLARATION
+std::size_t NLOHMANN_BASIC_JSON_TPL::m_memory_limit_bytes = 0;
+
+NLOHMANN_BASIC_JSON_TPL_DECLARATION
+double NLOHMANN_BASIC_JSON_TPL::m_memory_limit_percentage = 0.0;
+
+NLOHMANN_BASIC_JSON_TPL_DECLARATION
+bool NLOHMANN_BASIC_JSON_TPL::m_use_relative_memory_limit = false;
 
 namespace std // NOLINT(cert-dcl58-cpp)
 {

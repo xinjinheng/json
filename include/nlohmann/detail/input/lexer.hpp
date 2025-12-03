@@ -121,6 +121,36 @@ class lexer : public lexer_base<BasicJsonType>
   public:
     using token_type = typename lexer_base<BasicJsonType>::token_type;
 
+    /// state type for resuming lexing
+    struct state_type
+    {
+        /// the current character
+        char_int_type current = char_traits<char_type>::eof();
+        
+        /// whether the next get() call should just return current
+        bool next_unget = false;
+        
+        /// the start position of the current token
+        position_t position {};
+        
+        /// raw input token string (for error messages)
+        std::vector<char_type> token_string {};
+        
+        /// buffer for variable-length tokens (numbers, strings)
+        string_t token_buffer {};
+        
+        /// a description of occurred lexer errors
+        const char* error_message = "";
+        
+        // number values
+        number_integer_t value_integer = 0;
+        number_unsigned_t value_unsigned = 0;
+        number_float_t value_float = 0;
+        
+        /// the position of the decimal point in the input
+        std::size_t decimal_point_position = std::string::npos;
+    };
+
     explicit lexer(InputAdapterType&& adapter, bool ignore_comments_ = false) noexcept
         : ia(std::move(adapter))
         , ignore_comments(ignore_comments_)
@@ -133,6 +163,38 @@ class lexer : public lexer_base<BasicJsonType>
     lexer& operator=(lexer&) = delete;
     lexer& operator=(lexer&&) = default; // NOLINT(hicpp-noexcept-move,performance-noexcept-move-constructor)
     ~lexer() = default;
+
+    /// save current lexer state
+    state_type save_state() const
+    {
+        state_type state;
+        state.current = current;
+        state.next_unget = next_unget;
+        state.position = position;
+        state.token_string = token_string;
+        state.token_buffer = token_buffer;
+        state.error_message = error_message;
+        state.value_integer = value_integer;
+        state.value_unsigned = value_unsigned;
+        state.value_float = value_float;
+        state.decimal_point_position = decimal_point_position;
+        return state;
+    }
+
+    /// restore lexer state from a saved state
+    void restore_state(const state_type& state)
+    {
+        current = state.current;
+        next_unget = state.next_unget;
+        position = state.position;
+        token_string = state.token_string;
+        token_buffer = state.token_buffer;
+        error_message = state.error_message;
+        value_integer = state.value_integer;
+        value_unsigned = state.value_unsigned;
+        value_float = state.value_float;
+        decimal_point_position = state.decimal_point_position;
+    }
 
   private:
     /////////////////////
@@ -1439,6 +1501,72 @@ scan_number_done:
             token_buffer[decimal_point_position] = '.';
         }
         return token_buffer;
+    }
+
+    /////////////////////
+    // state management
+    /////////////////////
+
+    /// struct to hold lexer state
+    struct state_type
+    {
+        /// the current character
+        char_int_type current = char_traits<char_type>::eof();
+        
+        /// whether the next get() call should just return current
+        bool next_unget = false;
+        
+        /// the start position of the current token
+        position_t position {};
+        
+        /// raw input token string (for error messages)
+        std::vector<char_type> token_string {};
+        
+        /// buffer for variable-length tokens (numbers, strings)
+        string_t token_buffer {};
+        
+        /// a description of occurred lexer errors
+        const char* error_message = "";
+
+        // number values
+        number_integer_t value_integer = 0;
+        number_unsigned_t value_unsigned = 0;
+        number_float_t value_float = 0;
+
+        /// the position of the decimal point in the input
+        std::size_t decimal_point_position = std::string::npos;
+    };
+
+    /// save current lexer state
+    state_type save_state() const
+    {
+        state_type state;
+        state.current = current;
+        state.next_unget = next_unget;
+        state.position = position;
+        state.token_string = token_string;
+        state.token_buffer = token_buffer;
+        state.error_message = error_message;
+        state.value_integer = value_integer;
+        state.value_unsigned = value_unsigned;
+        state.value_float = value_float;
+        state.decimal_point_position = decimal_point_position;
+        return state;
+    }
+
+    /// restore lexer state from a saved state
+    void restore_state(const state_type& state)
+    {
+        current = state.current;
+        next_unget = state.next_unget;
+        position = state.position;
+        token_string = state.token_string;
+        token_buffer = state.token_buffer;
+        error_message = state.error_message;
+        value_integer = state.value_integer;
+        value_unsigned = state.value_unsigned;
+        value_float = state.value_float;
+        decimal_point_position = state.decimal_point_position;
     }
 
     /////////////////////
