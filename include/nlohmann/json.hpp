@@ -41,6 +41,8 @@
 #include <nlohmann/detail/input/input_adapters.hpp>
 #include <nlohmann/detail/input/lexer.hpp>
 #include <nlohmann/detail/input/parser.hpp>
+#include <nlohmann/detail/memory_monitor.hpp>
+#include <nlohmann/detail/parse_state.hpp>
 #include <nlohmann/detail/iterators/internal_iterator.hpp>
 #include <nlohmann/detail/iterators/iter_impl.hpp>
 #include <nlohmann/detail/iterators/iteration_proxy.hpp>
@@ -195,6 +197,7 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
     using type_error = detail::type_error;
     using out_of_range = detail::out_of_range;
     using other_error = detail::other_error;
+    using memory_limit_exception = detail::memory_limit_exception;
 
     /// @}
 
@@ -244,6 +247,134 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
     static allocator_type get_allocator()
     {
         return allocator_type();
+    }
+
+    ////////////////
+    // memory management //
+    ////////////////
+
+    /// @name memory management
+    /// Functions to set and get memory limits for parsing.
+    /// @{
+
+    /// @brief set global absolute memory threshold for parsing
+    /// @param threshold Absolute memory threshold in bytes (0 means no limit)
+    /// @sa https://json.nlohmann.me/api/basic_json/set_memory_threshold/
+    static void set_memory_threshold(std::size_t threshold) noexcept
+    {
+        get_memory_monitor().set_absolute_threshold(threshold);
+    }
+
+    /// @brief set global relative memory threshold for parsing
+    /// @param threshold Relative memory threshold as percentage of total system memory (0.0 to 1.0)
+    /// @throws std::invalid_argument if threshold is not in [0.0, 1.0]
+    /// @sa https://json.nlohmann.me/api/basic_json/set_memory_threshold/
+    static void set_memory_threshold(double threshold)
+    {
+        get_memory_monitor().set_relative_threshold(threshold);
+    }
+
+    /// @brief get global absolute memory threshold for parsing
+    /// @return Absolute memory threshold in bytes
+    /// @sa https://json.nlohmann.me/api/basic_json/get_memory_threshold/
+    static std::size_t get_memory_threshold() noexcept
+    {
+        return get_memory_monitor().get_absolute_threshold();
+    }
+
+    /// @brief get global relative memory threshold for parsing
+    /// @return Relative memory threshold as percentage of total system memory
+    /// @sa https://json.nlohmann.me/api/basic_json/get_relative_memory_threshold/
+    static double get_relative_memory_threshold() noexcept
+    {
+        return get_memory_monitor().get_relative_threshold();
+    }
+
+    /// @brief check if current memory usage exceeds the threshold
+    /// @return True if memory usage exceeds threshold, false otherwise
+    /// @sa https://json.nlohmann.me/api/basic_json/is_memory_exceeded/
+    static bool is_memory_exceeded() noexcept
+    {
+        return get_memory_monitor().is_memory_exceeded();
+    }
+
+    /// @brief get current memory usage of the process
+    /// @return Current memory usage in bytes
+    /// @sa https://json.nlohmann.me/api/basic_json/get_current_memory_usage/
+    static std::size_t get_current_memory_usage() noexcept
+    {
+        return get_memory_monitor().get_current_memory_usage();
+    }
+
+    /// @brief get total system memory
+    /// @return Total system memory in bytes
+    /// @sa https://json.nlohmann.me/api/basic_json/get_total_system_memory/
+    static std::size_t get_total_system_memory() noexcept
+    {
+        return get_memory_monitor().get_total_system_memory();
+    }
+
+    /// @brief restore parsing from a saved parse state
+    /// @param[in] state the saved parse state
+    /// @param[in] options the parse options
+    /// @return the parsed JSON value
+    /// @throws parse_error if parsing fails
+    /// @sa https://json.nlohmann.me/api/basic_json/from_json_with_state/
+    static basic_json from_json_with_state(const detail::parse_state<basic_json>& state, const parser_options_t& options = {})
+    {
+        if (!state.is_valid())
+        {
+            JSON_THROW(detail::parse_error::create(101, "invalid parse state", nullptr));
+        }
+
+        // Create a new parser with the remaining input
+        detail::parser<basic_json> parser(state.remaining_input(), options);
+        
+        // Restore the parse state
+        if (!parser.restore_state(state))
+        {
+            JSON_THROW(detail::parse_error::create(101, "failed to restore parse state", nullptr));
+        }
+
+        // If we have a partially parsed value, use it as the base
+        basic_json result;
+        if (state.parsed_value)
+        {
+            result = *state.parsed_value;
+        }
+
+        // Continue parsing
+        parser.parse(result);
+        return result;
+    }
+
+    /// @brief restore parsing from a memory limit exception
+    /// @param[in] ex the memory limit exception
+    /// @param[in] options the parse options
+    /// @return the parsed JSON value
+    /// @throws parse_error if parsing fails
+    /// @throws std::logic_error if the exception does not contain a valid parse state
+    /// @sa https://json.nlohmann.me/api/basic_json/from_json_with_state/
+    static basic_json from_json_with_state(const detail::memory_limit_exception& ex, const parser_options_t& options = {})
+    {
+        auto state = ex.get_parse_state<basic_json>();
+        if (!state)
+        {
+            JSON_THROW(std::logic_error("exception does not contain a valid parse state"));
+        }
+        return from_json_with_state(*state, options);
+    }
+
+    /// @}
+
+  private:
+
+    /// @brief get the global memory monitor instance
+    /// @return Reference to the global memory monitor
+    static detail::memory_monitor& get_memory_monitor() noexcept
+    {
+        static detail::memory_monitor instance;
+        return instance;
     }
 
     /// @brief returns version information on the library

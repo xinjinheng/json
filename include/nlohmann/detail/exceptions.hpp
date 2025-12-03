@@ -18,6 +18,7 @@
 #include <vector> // vector
 
 #include <nlohmann/detail/value_t.hpp>
+#include <nlohmann/detail/parse_state.hpp>
 #include <nlohmann/detail/string_escape.hpp>
 #include <nlohmann/detail/input/position_t.hpp>
 #include <nlohmann/detail/macro_scope.hpp>
@@ -281,6 +282,81 @@ class other_error : public exception
   private:
     JSON_HEDLEY_NON_NULL(3)
     other_error(int id_, const char* what_arg) : exception(id_, what_arg) {}
+};
+
+/// @brief exception indicating memory limit exceeded during parsing
+/// @sa https://json.nlohmann.me/api/basic_json/memory_limit_exception/
+class memory_limit_exception : public exception
+{
+  public:
+    /*! @brief create a memory limit exception
+     *  @param[in] id_       the id of the exception
+     *  @param[in] current   current memory usage in bytes
+     *  @param[in] threshold memory threshold in bytes
+     *  @param[in] what_arg  the explanatory string
+     *  @return memory_limit_exception object
+     */
+    template<typename BasicJsonContext, enable_if_t<is_basic_json_context<BasicJsonContext>::value, int> = 0>
+    static memory_limit_exception create(int id_, std::size_t current, std::size_t threshold, const std::string& what_arg, BasicJsonContext context)
+    {
+        const std::string w = concat(exception::name("memory_limit_exception", id_), 
+                                     exception::diagnostics(context), 
+                                     what_arg, 
+                                     " (current: ", std::to_string(current), 
+                                     " bytes, threshold: ", std::to_string(threshold), " bytes)");
+        return {id_, current, threshold, w.c_str()};
+    }
+
+    template<typename BasicJsonContext, typename BasicJsonType, enable_if_t<is_basic_json_context<BasicJsonContext>::value, int> = 0>
+    static memory_limit_exception create(int id_, std::size_t current, std::size_t threshold, const std::string& what_arg, BasicJsonContext context, const parse_state<BasicJsonType>& parse_state)
+    {
+        const std::string w = concat(exception::name("memory_limit_exception", id_), 
+                                     exception::diagnostics(context), 
+                                     what_arg, 
+                                     " (current: ", std::to_string(current), 
+                                     " bytes, threshold: ", std::to_string(threshold), " bytes)");
+        auto state_ptr = std::make_shared<parse_state<BasicJsonType>>(parse_state);
+        return {id_, current, threshold, w.c_str(), state_ptr};
+    }
+
+    /*! @brief get the saved parse state
+    
+    @tparam BasicJsonType the JSON type
+    @return the saved parse state if available, or an empty optional
+    */
+    template<typename BasicJsonType>
+    std::optional<parse_state<BasicJsonType>> get_parse_state() const
+    {
+        if (parse_state_ptr)
+        {
+            try
+            {
+                auto state = std::static_pointer_cast<parse_state<BasicJsonType>>(parse_state_ptr);
+                return *state;
+            }
+            catch (...)
+            {
+                // Type mismatch, return empty
+            }
+        }
+        return std::nullopt;
+    }
+
+    /// current memory usage in bytes
+    const std::size_t current_memory; 
+    /// memory threshold in bytes
+    const std::size_t memory_threshold;
+    /// the saved parse state (if any)
+    const std::shared_ptr<void> parse_state_ptr;
+
+  private:
+    JSON_HEDLEY_NON_NULL(5)
+    memory_limit_exception(int id_, std::size_t current, std::size_t threshold, const char* what_arg)
+        : exception(id_, what_arg), current_memory(current), memory_threshold(threshold), parse_state_ptr(nullptr) {}
+
+    JSON_HEDLEY_NON_NULL(5)
+    memory_limit_exception(int id_, std::size_t current, std::size_t threshold, const char* what_arg, const std::shared_ptr<void>& parse_state)
+        : exception(id_, what_arg), current_memory(current), memory_threshold(threshold), parse_state_ptr(parse_state) {}
 };
 
 }  // namespace detail
