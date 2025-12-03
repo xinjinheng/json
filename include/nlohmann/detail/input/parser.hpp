@@ -66,20 +66,84 @@ class parser
     using lexer_t = lexer<BasicJsonType, InputAdapterType>;
     using token_type = typename lexer_t::token_type;
 
+  private:
+    /// memory threshold in bytes (0 means no limit)
+    std::size_t memory_threshold = 0;
+
+    /// check if current memory usage exceeds threshold
+    void check_memory_limit()
+    {
+        if (memory_threshold > 0)
+        {
+            // Simple memory usage calculation based on token type
+            std::size_t current_memory = 0;
+            
+            switch (last_token)
+            {
+                case token_type::begin_object:
+                    current_memory += sizeof(BasicJsonType) + sizeof(std::map<string_t, BasicJsonType>);
+                    break;
+                case token_type::begin_array:
+                    current_memory += sizeof(BasicJsonType) + sizeof(std::vector<BasicJsonType>);
+                    break;
+                case token_type::value_string:
+                    current_memory += sizeof(BasicJsonType) + m_lexer.get_string().size() * sizeof(typename string_t::value_type);
+                    break;
+                case token_type::value_integer:
+                    current_memory += sizeof(BasicJsonType) + sizeof(number_integer_t);
+                    break;
+                case token_type::value_unsigned:
+                    current_memory += sizeof(BasicJsonType) + sizeof(number_unsigned_t);
+                    break;
+                case token_type::value_float:
+                    current_memory += sizeof(BasicJsonType) + sizeof(number_float_t);
+                    break;
+                case token_type::literal_true:
+                case token_type::literal_false:
+                    current_memory += sizeof(BasicJsonType) + sizeof(bool);
+                    break;
+                case token_type::literal_null:
+                    current_memory += sizeof(BasicJsonType);
+                    break;
+                default:
+                    break;
+            }
+
+            if (current_memory > memory_threshold)
+            {
+                throw detail::memory_limit_exception::create(1, "Memory limit exceeded", nullptr, current_memory, memory_threshold);
+            }
+        }
+    }
+
   public:
     /// a parser reading from an input adapter
     explicit parser(InputAdapterType&& adapter,
                     parser_callback_t<BasicJsonType> cb = nullptr,
                     const bool allow_exceptions_ = true,
                     const bool ignore_comments = false,
-                    const bool ignore_trailing_commas_ = false)
+                    const bool ignore_trailing_commas_ = false,
+                    std::size_t threshold = BasicJsonType::get_memory_threshold())
         : callback(std::move(cb))
         , m_lexer(std::move(adapter), ignore_comments)
         , allow_exceptions(allow_exceptions_)
         , ignore_trailing_commas(ignore_trailing_commas_)
+        , memory_threshold(threshold)
     {
         // read first token
         get_token();
+    }
+
+    /// sets the memory threshold for parsing (in bytes)
+    void set_memory_threshold(std::size_t threshold)
+    {
+        memory_threshold = threshold;
+    }
+
+    /// gets the current memory threshold for parsing (in bytes)
+    std::size_t get_memory_threshold() const
+    {
+        return memory_threshold;
     }
 
     /*!
@@ -196,7 +260,8 @@ class parser
                 {
                     case token_type::begin_object:
                     {
-                        if (JSON_HEDLEY_UNLIKELY(!sax->start_object(detail::unknown_size())))
+                        check_memory_limit();
+                        if (JSON_HEDLEY_UNLIKELY(!sax->start_object(detail::unknown_size()))) 
                         {
                             return false;
                         }
@@ -241,7 +306,8 @@ class parser
 
                     case token_type::begin_array:
                     {
-                        if (JSON_HEDLEY_UNLIKELY(!sax->start_array(detail::unknown_size())))
+                        check_memory_limit();
+                        if (JSON_HEDLEY_UNLIKELY(!sax->start_array(detail::unknown_size()))) 
                         {
                             return false;
                         }
@@ -265,7 +331,8 @@ class parser
 
                     case token_type::value_float:
                     {
-                        const auto res = m_lexer.get_number_float();
+                        check_memory_limit();
+                        const auto res = m_lexer.get_number_float(); 
 
                         if (JSON_HEDLEY_UNLIKELY(!std::isfinite(res)))
                         {
@@ -284,7 +351,8 @@ class parser
 
                     case token_type::literal_false:
                     {
-                        if (JSON_HEDLEY_UNLIKELY(!sax->boolean(false)))
+                        check_memory_limit();
+                        if (JSON_HEDLEY_UNLIKELY(!sax->boolean(false))) 
                         {
                             return false;
                         }
@@ -293,7 +361,8 @@ class parser
 
                     case token_type::literal_null:
                     {
-                        if (JSON_HEDLEY_UNLIKELY(!sax->null()))
+                        check_memory_limit();
+                        if (JSON_HEDLEY_UNLIKELY(!sax->null())) 
                         {
                             return false;
                         }
@@ -302,7 +371,8 @@ class parser
 
                     case token_type::literal_true:
                     {
-                        if (JSON_HEDLEY_UNLIKELY(!sax->boolean(true)))
+                        check_memory_limit();
+                        if (JSON_HEDLEY_UNLIKELY(!sax->boolean(true))) 
                         {
                             return false;
                         }
@@ -311,7 +381,8 @@ class parser
 
                     case token_type::value_integer:
                     {
-                        if (JSON_HEDLEY_UNLIKELY(!sax->number_integer(m_lexer.get_number_integer())))
+                        check_memory_limit();
+                        if (JSON_HEDLEY_UNLIKELY(!sax->number_integer(m_lexer.get_number_integer()))) 
                         {
                             return false;
                         }
@@ -320,7 +391,8 @@ class parser
 
                     case token_type::value_string:
                     {
-                        if (JSON_HEDLEY_UNLIKELY(!sax->string(m_lexer.get_string())))
+                        check_memory_limit();
+                        if (JSON_HEDLEY_UNLIKELY(!sax->string(m_lexer.get_string()))) 
                         {
                             return false;
                         }
@@ -329,7 +401,8 @@ class parser
 
                     case token_type::value_unsigned:
                     {
-                        if (JSON_HEDLEY_UNLIKELY(!sax->number_unsigned(m_lexer.get_number_unsigned())))
+                        check_memory_limit();
+                        if (JSON_HEDLEY_UNLIKELY(!sax->number_unsigned(m_lexer.get_number_unsigned()))) 
                         {
                             return false;
                         }
@@ -530,6 +603,8 @@ class parser
     const bool allow_exceptions = true;
     /// whether trailing commas in objects and arrays should be ignored (true) or signaled as errors (false)
     const bool ignore_trailing_commas = false;
+    /// memory threshold for parsing (in bytes)
+    std::size_t memory_threshold = 0;
 };
 
 }  // namespace detail

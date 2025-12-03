@@ -128,6 +128,9 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
   JSON_PRIVATE_UNLESS_TESTED:
     // convenience aliases for types residing in namespace detail;
     using lexer = ::nlohmann::detail::lexer_base<basic_json>;
+    
+    /// static memory threshold in bytes (0 means no limit)
+    static std::size_t memory_threshold;
 
     template<typename InputAdapterType>
     static ::nlohmann::detail::parser<basic_json, InputAdapterType> parser(
@@ -135,11 +138,12 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
         detail::parser_callback_t<basic_json>cb = nullptr,
         const bool allow_exceptions = true,
         const bool ignore_comments = false,
-        const bool ignore_trailing_commas = false
+        const bool ignore_trailing_commas = false,
+        std::size_t memory_threshold = 0
     )
     {
         return ::nlohmann::detail::parser<basic_json, InputAdapterType>(std::move(adapter),
-               std::move(cb), allow_exceptions, ignore_comments, ignore_trailing_commas);
+               std::move(cb), allow_exceptions, ignore_comments, ignore_trailing_commas, memory_threshold);
     }
 
   private:
@@ -195,6 +199,7 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
     using type_error = detail::type_error;
     using out_of_range = detail::out_of_range;
     using other_error = detail::other_error;
+    using memory_limit_exception = detail::memory_limit_exception;
 
     /// @}
 
@@ -237,7 +242,44 @@ class basic_json // NOLINT(cppcoreguidelines-special-member-functions,hicpp-spec
     /// a const reverse iterator for a basic_json container
     using const_reverse_iterator = json_reverse_iterator<typename basic_json::const_iterator>;
 
-    /// @}
+    /// @} 
+
+    /// @name memory management
+    /// Methods to set and get memory thresholds for parsing.
+    /// @{ 
+
+    /// @brief sets the memory threshold for parsing (in bytes)
+    /// @param[in] threshold the memory threshold in bytes
+    /// @sa https://json.nlohmann.me/api/basic_json/set_memory_threshold/
+    static void set_memory_threshold(std::size_t threshold)
+    {
+        memory_threshold = threshold;
+    }
+
+    /// @brief gets the current memory threshold for parsing (in bytes)
+    /// @return the current memory threshold in bytes
+    /// @sa https://json.nlohmann.me/api/basic_json/get_memory_threshold/
+    static std::size_t get_memory_threshold()
+    {
+        return memory_threshold;
+    }
+
+    /// @brief sets the memory threshold for parsing as a percentage of system memory
+    /// @param[in] percentage the memory threshold as a percentage of system memory (0.0 to 100.0)
+    /// @sa https://json.nlohmann.me/api/basic_json/set_memory_threshold_percentage/
+    static void set_memory_threshold_percentage(double percentage)
+    {
+        // Clamp percentage to 0.0-100.0 range
+        percentage = std::max(0.0, std::min(100.0, percentage));
+        
+        // TODO: Implement system memory detection
+        // For now, we'll use a placeholder value of 1GB
+        std::size_t system_memory = 1024 * 1024 * 1024;
+        
+        memory_threshold = static_cast<std::size_t>(system_memory * (percentage / 100.0));
+    }
+
+    /// @} 
 
     /// @brief returns the allocator associated with the container
     /// @sa https://json.nlohmann.me/api/basic_json/get_allocator/
@@ -5367,6 +5409,10 @@ inline void swap(nlohmann::NLOHMANN_BASIC_JSON_TPL& j1, nlohmann::NLOHMANN_BASIC
 }
 
 #endif
+
+// Initialize static memory threshold
+NLOHMANN_BASIC_JSON_TPL_DECLARATION
+std::size_t nlohmann::NLOHMANN_BASIC_JSON_TPL::memory_threshold = 0;
 
 }  // namespace std
 

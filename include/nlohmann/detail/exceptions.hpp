@@ -266,6 +266,31 @@ class out_of_range : public exception
     out_of_range(int id_, const char* what_arg) : exception(id_, what_arg) {}
 };
 
+/// @brief exception indicating memory limit exceeded during parsing
+/// @sa https://json.nlohmann.me/api/basic_json/memory_limit_exception/
+class memory_limit_exception : public exception
+{
+  public:
+    template<typename BasicJsonContext, enable_if_t<is_basic_json_context<BasicJsonContext>::value, int> = 0>
+    static memory_limit_exception create(int id_, const std::string& what_arg, BasicJsonContext context, std::size_t current_memory, std::size_t memory_threshold)
+    {
+        const std::string w = concat(exception::name("memory_limit_exception", id_), exception::diagnostics(context), what_arg, 
+                                       " (current memory: ", std::to_string(current_memory), " bytes, threshold: ", std::to_string(memory_threshold), " bytes)");
+        return {id_, current_memory, memory_threshold, w.c_str()};
+    }
+
+    /// the current memory usage in bytes when the exception was thrown
+    const std::size_t current_memory;
+
+    /// the memory threshold in bytes that was exceeded
+    const std::size_t memory_threshold;
+
+  private:
+    JSON_HEDLEY_NON_NULL(5)
+    memory_limit_exception(int id_, std::size_t current_memory_, std::size_t memory_threshold_, const char* what_arg)
+        : exception(id_, what_arg), current_memory(current_memory_), memory_threshold(memory_threshold_) {}
+};
+
 /// @brief exception indicating other library errors
 /// @sa https://json.nlohmann.me/api/basic_json/other_error/
 class other_error : public exception
