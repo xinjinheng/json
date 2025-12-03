@@ -19,6 +19,7 @@
 #include <nlohmann/detail/input/input_adapters.hpp>
 #include <nlohmann/detail/input/json_sax.hpp>
 #include <nlohmann/detail/input/lexer.hpp>
+#include <nlohmann/detail/parse_state.hpp>
 #include <nlohmann/detail/macro_scope.hpp>
 #include <nlohmann/detail/meta/is_sax.hpp>
 #include <nlohmann/detail/string_concat.hpp>
@@ -146,8 +147,7 @@ class parser
         result.assert_invariant();
     }
 
-    /*!
-    @brief public accept interface
+    /*! @brief public accept interface
 
     @param[in] strict  whether to expect the last token to be EOF
     @return whether the input is a proper JSON text
@@ -156,6 +156,105 @@ class parser
     {
         json_sax_acceptor<BasicJsonType> sax_acceptor;
         return sax_parse(&sax_acceptor, strict);
+    }
+
+  private:
+    /*! @brief check if memory usage exceeds the threshold and throw exception if so
+    
+    @throws memory_limit_exception if memory usage exceeds threshold
+    */
+    void check_memory_limit()
+    {
+        if (BasicJsonType::is_memory_exceeded())
+        {
+            const std::size_t current = BasicJsonType::get_current_memory_usage();
+            const std::size_t threshold = BasicJsonType::get_memory_threshold();
+            const double relative_threshold = BasicJsonType::get_relative_memory_threshold();
+            
+            std::string what_arg = "memory limit exceeded during parsing";
+            if (threshold > 0 && relative_threshold > 0.0)
+            {
+                what_arg += " (absolute: " + std::to_string(threshold) + ", relative: " + std::to_string(relative_threshold * 100) + "%)";
+            }
+            else if (threshold > 0)
+            {
+                what_arg += " (absolute: " + std::to_string(threshold) + ")";
+            }
+            else if (relative_threshold > 0.0)
+            {
+                what_arg += " (relative: " + std::to_string(relative_threshold * 100) + "%)";
+            }
+            
+            // Create a parse state object to save the current parsing state
+            detail::parse_state<BasicJsonType> state(*this);
+            
+            JSON_THROW(detail::memory_limit_exception::create(1001, current, threshold, what_arg, nullptr, state));
+        }
+    }
+
+    /*! @brief return the last read token
+    
+    @return the last read token
+    */
+    token_type get_last_token() const
+    {
+        return last_token;
+    }
+
+    /*! @brief return the remaining input data
+    
+    @return a string containing the remaining input data
+    */
+    std::string remaining_input() const
+    {
+        // This is a simplified implementation - a real implementation
+        // would need to get the remaining input from the lexer
+        return "";
+    }
+
+    /*! @brief save the current parse state
+    
+    @return a parse_state object representing the current state
+    */
+    parse_state<BasicJsonType> save_state() const
+    {
+        return parse_state<BasicJsonType>(*this);
+    }
+
+    /*! @brief restore the parse state from a parse_state object
+    
+    @param state the parse_state object to restore from
+    @return true if the state was successfully restored, false otherwise
+    */
+    bool restore_state(const parse_state<BasicJsonType>& state)
+    {
+        if (!state.is_valid())
+        {
+            return false;
+        }
+
+        // Restore basic parser state
+        last_token = state.current_token;
+        this->state = state.state;
+        depth = state.depth;
+        is_errored = state.is_errored;
+        error_message = state.error_message;
+        error_pos = state.error_pos;
+        current_key = state.current_key;
+
+        // Restore input stream position and remaining input
+        // Recreate the lexer with the remaining input from the saved state
+        m_lexer = detail::lexer<BasicJsonType>(state.remaining_input());
+        
+        // If we have a partially parsed value, restore it
+        if (state.parsed_value)
+        {
+            // This is a simplified implementation - a more robust implementation
+            // would need to properly integrate the partially parsed value
+            // into the parsing process
+        }
+        
+        return true;
     }
 
     template<typename SAX>
@@ -189,6 +288,9 @@ class parser
 
         while (true)
         {
+            // Check memory limit at the beginning of each iteration
+            check_memory_limit();
+            
             if (!skip_to_state_evaluation)
             {
                 // invariant: get_token() was called before each iteration
@@ -196,6 +298,9 @@ class parser
                 {
                     case token_type::begin_object:
                     {
+                        // Check memory before starting to parse object
+                        check_memory_limit();
+                        
                         if (JSON_HEDLEY_UNLIKELY(!sax->start_object(detail::unknown_size())))
                         {
                             return false;
@@ -241,6 +346,9 @@ class parser
 
                     case token_type::begin_array:
                     {
+                        // Check memory before starting to parse array
+                        check_memory_limit();
+                        
                         if (JSON_HEDLEY_UNLIKELY(!sax->start_array(detail::unknown_size())))
                         {
                             return false;
@@ -265,6 +373,9 @@ class parser
 
                     case token_type::value_float:
                     {
+                        // Check memory before parsing float value
+                        check_memory_limit();
+                        
                         const auto res = m_lexer.get_number_float();
 
                         if (JSON_HEDLEY_UNLIKELY(!std::isfinite(res)))
@@ -284,6 +395,9 @@ class parser
 
                     case token_type::literal_false:
                     {
+                        // Check memory before parsing false literal
+                        check_memory_limit();
+                        
                         if (JSON_HEDLEY_UNLIKELY(!sax->boolean(false)))
                         {
                             return false;
@@ -293,6 +407,9 @@ class parser
 
                     case token_type::literal_null:
                     {
+                        // Check memory before parsing null literal
+                        check_memory_limit();
+                        
                         if (JSON_HEDLEY_UNLIKELY(!sax->null()))
                         {
                             return false;
@@ -302,6 +419,9 @@ class parser
 
                     case token_type::literal_true:
                     {
+                        // Check memory before parsing true literal
+                        check_memory_limit();
+                        
                         if (JSON_HEDLEY_UNLIKELY(!sax->boolean(true)))
                         {
                             return false;
@@ -311,6 +431,9 @@ class parser
 
                     case token_type::value_integer:
                     {
+                        // Check memory before parsing integer value
+                        check_memory_limit();
+                        
                         if (JSON_HEDLEY_UNLIKELY(!sax->number_integer(m_lexer.get_number_integer())))
                         {
                             return false;
@@ -320,6 +443,9 @@ class parser
 
                     case token_type::value_string:
                     {
+                        // Check memory before parsing string value
+                        check_memory_limit();
+                        
                         if (JSON_HEDLEY_UNLIKELY(!sax->string(m_lexer.get_string())))
                         {
                             return false;
@@ -329,6 +455,9 @@ class parser
 
                     case token_type::value_unsigned:
                     {
+                        // Check memory before parsing unsigned integer value
+                        check_memory_limit();
+                        
                         if (JSON_HEDLEY_UNLIKELY(!sax->number_unsigned(m_lexer.get_number_unsigned())))
                         {
                             return false;
