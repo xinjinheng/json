@@ -163,6 +163,65 @@ class exception : public std::exception
 
 /// @brief exception indicating a parse error
 /// @sa https://json.nlohmann.me/api/basic_json/parse_error/
+class memory_limit_exception : public exception
+{
+  public:
+    memory_limit_exception(std::size_t current_memory, std::size_t limit, bool is_relative, double percentage)
+        : m_current_memory(current_memory)
+        , m_limit(limit)
+        , m_is_relative(is_relative)
+        , m_percentage(percentage)
+    {}
+
+    /// returns the explanatory string
+    const char* what() const noexcept override
+    {
+        std::stringstream ss;
+        ss << "Memory limit exceeded: current memory usage is " << m_current_memory << " bytes";
+        if (m_is_relative)
+        {
+            ss << ", which exceeds " << m_percentage << "% of system memory (" << m_limit << " bytes)";
+        }
+        else
+        {
+            ss << ", which exceeds the configured limit of " << m_limit << " bytes";
+        }
+        m_what = ss.str();
+        return m_what.c_str();
+    }
+
+    /// returns the current memory usage in bytes
+    std::size_t get_current_memory() const noexcept
+    {
+        return m_current_memory;
+    }
+
+    /// returns the memory limit in bytes
+    std::size_t get_limit() const noexcept
+    {
+        return m_limit;
+    }
+
+    /// returns whether the limit is relative to system memory
+    bool is_relative() const noexcept
+    {
+        return m_is_relative;
+    }
+
+    /// returns the percentage of system memory (if relative limit is used)
+    double get_percentage() const noexcept
+    {
+        return m_percentage;
+    }
+
+  private:
+    std::size_t m_current_memory;
+    std::size_t m_limit;
+    bool m_is_relative;
+    double m_percentage;
+    mutable std::string m_what;
+};
+
 class parse_error : public exception
 {
   public:
@@ -281,6 +340,44 @@ class other_error : public exception
   private:
     JSON_HEDLEY_NON_NULL(3)
     other_error(int id_, const char* what_arg) : exception(id_, what_arg) {}
+};
+
+/// @brief exception indicating memory limit exceeded during parsing
+/// @sa https://json.nlohmann.me/api/basic_json/memory_limit_exception/
+class memory_limit_exception : public exception
+{
+  public:
+    /*!
+    @brief create a memory limit exception
+    @param[in] id_       the id of the exception
+    @param[in] current_memory  the current memory usage in bytes
+    @param[in] memory_limit    the memory limit in bytes
+    @param[in] what_arg  the explanatory string
+    @param[in] context   the JSON context where the error occurred
+    @return memory_limit_exception object
+    */
+    template<typename BasicJsonContext, enable_if_t<is_basic_json_context<BasicJsonContext>::value, int> = 0>
+    static memory_limit_exception create(int id_, std::size_t current_memory, std::size_t memory_limit, const std::string& what_arg, BasicJsonContext context)
+    {
+        const std::string w = concat(exception::name("memory_limit_exception", id_), exception::diagnostics(context), what_arg, 
+                                     " (current: ", std::to_string(current_memory), " bytes, limit: ", std::to_string(memory_limit), " bytes)");
+        return {id_, current_memory, memory_limit, w.c_str()};
+    }
+
+    /*!
+    @brief current memory usage in bytes
+    */
+    const std::size_t current_memory;
+
+    /*!
+    @brief memory limit in bytes
+    */
+    const std::size_t memory_limit;
+
+  private:
+    JSON_HEDLEY_NON_NULL(4)
+    memory_limit_exception(int id_, std::size_t current_memory_, std::size_t memory_limit_, const char* what_arg)
+        : exception(id_, what_arg), current_memory(current_memory_), memory_limit(memory_limit_) {}
 };
 
 }  // namespace detail
