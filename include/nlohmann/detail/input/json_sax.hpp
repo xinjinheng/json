@@ -193,47 +193,64 @@ class json_sax_dom_parser
     bool null()
     {
         handle_value(nullptr);
+        // Check memory limit after adding new value
+        check_memory_limit(sizeof(BasicJsonType));
         return true;
     }
 
     bool boolean(bool val)
     {
         handle_value(val);
+        // Check memory limit after adding new value
+        check_memory_limit(sizeof(BasicJsonType) + sizeof(bool));
         return true;
     }
 
     bool number_integer(number_integer_t val)
     {
         handle_value(val);
+        // Check memory limit after adding new value
+        check_memory_limit(sizeof(BasicJsonType) + sizeof(number_integer_t));
         return true;
     }
 
     bool number_unsigned(number_unsigned_t val)
     {
         handle_value(val);
+        // Check memory limit after adding new value
+        check_memory_limit(sizeof(BasicJsonType) + sizeof(number_unsigned_t));
         return true;
     }
 
     bool number_float(number_float_t val, const string_t& /*unused*/)
     {
         handle_value(val);
+        // Check memory limit after adding new value
+        check_memory_limit(sizeof(BasicJsonType) + sizeof(number_float_t));
         return true;
     }
 
     bool string(string_t& val)
     {
         handle_value(val);
+        // Check memory limit after adding new value
+        check_memory_limit(sizeof(BasicJsonType) + val.size() * sizeof(typename string_t::value_type));
         return true;
     }
 
     bool binary(binary_t& val)
     {
         handle_value(std::move(val));
+        // Check memory limit after adding new value
+        check_memory_limit(sizeof(BasicJsonType) + val.size());
         return true;
     }
 
     bool start_object(std::size_t len)
     {
+        // Check memory limit before creating new object
+        check_memory_limit(sizeof(BasicJsonType) + sizeof(std::map<string_t, BasicJsonType>));
+        
         ref_stack.push_back(handle_value(BasicJsonType::value_t::object));
 
 #if JSON_DIAGNOSTIC_POSITIONS
@@ -285,6 +302,9 @@ class json_sax_dom_parser
 
     bool start_array(std::size_t len)
     {
+        // Check memory limit before creating new array
+        check_memory_limit(sizeof(BasicJsonType) + sizeof(std::vector<BasicJsonType>));
+        
         ref_stack.push_back(handle_value(BasicJsonType::value_t::array));
 
 #if JSON_DIAGNOSTIC_POSITIONS
@@ -341,6 +361,21 @@ class json_sax_dom_parser
     }
 
   private:
+    /// check if current memory usage exceeds threshold
+    void check_memory_limit(std::size_t added_memory)
+    {
+        // Track total memory usage
+        static std::size_t total_memory = 0;
+        total_memory += added_memory;
+        
+        // Get the memory threshold from the BasicJsonType's static member
+        std::size_t memory_threshold = BasicJsonType::get_memory_threshold();
+        
+        if (memory_threshold > 0 && total_memory > memory_threshold)
+        {
+            throw detail::memory_limit_exception::create(1, "Memory limit exceeded", nullptr, total_memory, memory_threshold);
+        }
+    }
 
 #if JSON_DIAGNOSTIC_POSITIONS
     void handle_diagnostic_positions_for_json_value(BasicJsonType& v)
